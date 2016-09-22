@@ -62,6 +62,14 @@ DWORD WINAPI ControlServerWriteWorkRoutine(LPVOID parma) {
 }
 
 DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
+	ControlServer* server = (ControlServer*)param;
+
+	server->DoWork();
+
+	return 0;
+}
+
+void ControlServer::DoWork() {
 	WSADATA			WSAData = { 0 };
 	ULONG           ulRetCode = CXN_SUCCESS;
 	int             iAddrLen = sizeof(SOCKADDR_BTH);
@@ -69,14 +77,12 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 	char *       pszInstanceName = NULL;
 	char         szThisComputerName[MAX_COMPUTERNAME_LENGTH + 1];
 	DWORD           dwLenComputerName = MAX_COMPUTERNAME_LENGTH + 1;
-    SOCKET          LocalSocket = INVALID_SOCKET;
+	SOCKET          LocalSocket = INVALID_SOCKET;
 	SOCKET          ClientSocket = INVALID_SOCKET;
 	WSAQUERYSET     wsaQuerySet = { 0 };
 	SOCKADDR_BTH    SockAddrBthLocal = { 0 };
 	LPCSADDR_INFO   lpCSAddrInfo = NULL;
 	HRESULT         res;
-
-	ControlServer* server = (ControlServer*)param;
 
 	//
 	// Ask for Winsock version 2.2.
@@ -114,7 +120,7 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 	//
 	if (CXN_SUCCESS == ulRetCode) {
 		LocalSocket = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
-		server->mLocalSocket = LocalSocket;
+		mLocalSocket = LocalSocket;
 		if (INVALID_SOCKET == LocalSocket) {
 			wprintf(L"=CRITICAL= | socket() call failed. WSAGetLastError = [%d]\n", WSAGetLastError());
 			ulRetCode = CXN_ERROR;
@@ -227,7 +233,7 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 
 	if (CXN_SUCCESS == ulRetCode) {
 
-		while ((CXN_SUCCESS == ulRetCode) && !server->IsDestroyed()) {
+		while ((CXN_SUCCESS == ulRetCode) && !IsDestroyed()) {
 			//
 			// accept() call indicates winsock2 to wait for any
 			// incoming connection request from a remote socket.
@@ -236,49 +242,50 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 			// returns the handle to this newly created socket. This newly created
 			// socket represents the actual connection that connects the two sockets.
 			//
-			server->mClientSocket = accept(LocalSocket, NULL, NULL);
-			if (INVALID_SOCKET == server->mClientSocket) {
+			mClientSocket = accept(LocalSocket, NULL, NULL);
+			if (INVALID_SOCKET == mClientSocket) {
 				wprintf(L"=CRITICAL= | accept() call failed. WSAGetLastError=[%d]\n", WSAGetLastError());
 				ulRetCode = CXN_ERROR;
 				break; // Break out of the for loop
 			}
 
 			wprintf(L"New Bluetooth connection established \n");
-
 			//
 			// Read data from the incoming stream
 			//
-			while (!server->IsDestroyed()) {
-				int byteReceived = recv(server->mClientSocket, server->mReadBuffer + server->mReadPosition, CXN_READ_BUFFER_SIZE - server->mReadPosition, 0);
+			while (INVALID_SOCKET != mClientSocket) {
+				int byteReceived = recv(mClientSocket, mReadBuffer + mReadPosition, CXN_READ_BUFFER_SIZE - mReadPosition, 0);
 				if (byteReceived > 0) {
-					server->mReadPosition += byteReceived;
+					mReadPosition += byteReceived;
 
 					int pos = 0;
-					while (server->mReadPosition - pos >= AUTODRIVE_HEADER_SIZE) {
+					while (mReadPosition - pos >= AUTODRIVE_HEADER_SIZE) {
 						AUTODRIVE_HEADER header = { 0 };
-						memcpy(&header, server->mReadBuffer + pos, sizeof(AUTODRIVE_HEADER));
+						memcpy(&header, mReadBuffer + pos, sizeof(AUTODRIVE_HEADER));
 
 						if (strncmp(header.pattern, AUTODRIVE_PROTOCL_HEADER_PATTERN, AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE) == 0) {
-							if (server->mReadPosition - (pos + AUTODRIVE_HEADER_SIZE) >= header.size) {
+							if (mReadPosition - (pos + AUTODRIVE_HEADER_SIZE) >= header.size) {
 								// handle action
-								server->HandleAction(header.seq, header.action, server->mReadBuffer + pos + AUTODRIVE_HEADER_SIZE, header.size);
+								HandleAction(header.seq, header.action, mReadBuffer + pos + AUTODRIVE_HEADER_SIZE, header.size);
 								pos += AUTODRIVE_HEADER_SIZE + header.size;
-							} else {
+							}
+							else {
 								break;
 							}
 						}
 						else {
 							// header failed
 							int start = 0;
-							for (int idx = pos + 1; idx < server->mReadPosition; idx++) {
-								if (AUTODRIVE_PROTOCL_HEADER_PATTERN[start] == server->mReadBuffer[idx]) {
+							for (int idx = pos + 1; idx < mReadPosition; idx++) {
+								if (AUTODRIVE_PROTOCL_HEADER_PATTERN[start] == mReadBuffer[idx]) {
 									start++;
 
-									if (start >= AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE || idx == server->mReadPosition - 1) {
+									if (start >= AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE || idx == mReadPosition - 1) {
 										pos = idx - (start - 1);
 										break;
 									}
-								} else {
+								}
+								else {
 									start = 0;
 								}
 
@@ -287,25 +294,30 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 
 							if (start >= AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE) {
 								continue;
-							} else {
+							}
+							else {
 								break;
 							}
 						}
-						
+
 					}
 
 					if (pos > 0) {
-						if (server->mReadPosition > pos) {
-							memmove(server->mReadBuffer, server->mReadBuffer + pos, server->mReadPosition - pos);
-							server->mReadPosition -= pos;
-						} else {
-							server->mReadPosition = 0;
+						if (mReadPosition > pos) {
+							memmove(mReadBuffer, mReadBuffer + pos, mReadPosition - pos);
+							mReadPosition -= pos;
+						}
+						else {
+							mReadPosition = 0;
 						}
 					}
 				}
 				else {
-					closesocket(server->mClientSocket);
-					server->mClientSocket = NULL;
+					closesocket(mClientSocket);
+					mClientSocket = NULL;
+
+					WaitForSingleObject(mWriteWorkHandle, INFINITE);
+					mWriteWorkHandle = NULL;
 					break;
 				}
 			}
@@ -320,8 +332,6 @@ DWORD WINAPI ControlServerCoreRoutine(LPVOID param) {
 		HeapFree(GetProcessHeap(), 0, pszInstanceName);
 		pszInstanceName = NULL;
 	}
-
-	return 0;
 }
 
 void ControlServer::HandleAction(int seq, int actionCode, char* payload, int length) {
@@ -384,4 +394,17 @@ void ControlServer::Destroy() {
 
 bool ControlServer::IsDestroyed() {
 	return mDestroyed;
+}
+
+void ControlServer::Write(int seq, int action, int size, char* payload) {
+	if (INVALID_SOCKET != mClientSocket) {
+		send(mClientSocket, (const char*)AUTODRIVE_PROTOCL_HEADER_PATTERN, sizeof(int), 0);
+		send(mClientSocket, (const char*)&seq, AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE, 0);
+		send(mClientSocket, (const char*)&action, AUTODRIVE_PROTOCOL_HEADER_ACTION_CODE_SIZE, 0);
+		send(mClientSocket, (const char*)&size, AUTODRIVE_PROTOCOL_HEADER_PAYLOAD_SIZE_SIZE, 0);
+
+		if (size > 0 && payload > 0) {
+			send(mClientSocket, (const char*)payload, size, 0);
+		}
+	}
 }
