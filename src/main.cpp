@@ -1,9 +1,8 @@
 //standard includes
 #include <iostream>
-//ZED includes
-#include <zed/Camera.hpp>
-#include "RoboClaw.h"
 
+#include "RoboClaw.h"
+#include "Camera.h"
 #include "ControlServer.h"
 
 using namespace std;
@@ -14,29 +13,27 @@ int main() {
 	server.Start();
 
 	// RC Control TEST
-	RoboClaw roboclaw;
-
-	if (roboclaw.begin("com3", 115200)) {
-		std::cout << "RoboClaw connected through com3 with baudrate 115200" << std::endl;
+	RoboClaw* roboclaw = new RoboClaw();
+	std::string port("Com4");
+	if (roboclaw->begin(port, 115200)) {
+		std::cout << "RoboClaw connected through " << port << " with baudrate 115200" << std::endl;
 		// write test
 		uint8_t addr = 0x80;
-		roboclaw.ForwardM1(addr, 64);
-		roboclaw.BackwardM2(addr, 64);
+		Sleep(2000);
+		roboclaw->ForwardM1(addr, 16);
+		Sleep(1000);
+		roboclaw->ForwardM1(addr, 0);
+		Sleep(1000);
+		roboclaw->BackwardM1(addr, 16);
+		Sleep(1000);
+		roboclaw->BackwardM1(addr, 0);
+		// roboclaw.BackwardM2(addr, 64);
 	}
 	else {
 		std::cout << "RoboClaw not found" << std::endl;
 	}
 
-	// init ZED Camera
-	/*sl::zed::Camera * zed = 
-		new sl::zed::Camera(static_cast<sl::zed::ZEDResolution_mode> (sl::zed::ZEDResolution_mode::HD1080));
-
-	sl::zed::InitParams parameters;
-	parameters.mode = sl::zed::MODE::PERFORMANCE;
-	parameters.unit = sl::zed::UNIT::MILLIMETER;
-	parameters.verbose = 1;
-	
-	sl::zed::ERRCODE err = zed->init(parameters);*/
+	Camera* camera = new Camera();
 
 	/*cout << errcode2str(err) << endl;
 
@@ -54,8 +51,10 @@ int main() {
 	int depth_clamp = 5000;
 	zed->setDepthClampValue(depth_clamp);*/
 
-	while (1) {
-		
-	}
+	camera->DoWork();
+
+	delete roboclaw;
+	delete camera;
+
 	return 0;
 }

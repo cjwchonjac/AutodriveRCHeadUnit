@@ -36,7 +36,6 @@ bool RoboClaw::begin(const std::string& port, long speed)
 {
 	try {
 		hserial = new serial::Serial(port, speed, serial::Timeout(/*interbyte*/ 10, /*read*/ 100, /*read mul*/ 0, /*write*/ 100, /*write mul*/ 0));
-		hserial->open();
 		return true;
 	}
 	catch (serial::IOException& e) {
