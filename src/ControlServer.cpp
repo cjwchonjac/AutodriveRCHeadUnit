@@ -4,6 +4,7 @@
 #include <ws2bth.h>
 #include <strsafe.h>
 #include <intsafe.h>
+#include <ws2tcpip.h>
 
 #define AUTODRIVE_PROTOCL_HEADER_PATTERN	"autocar!"
 
@@ -235,21 +236,37 @@ void ControlServer::DoWork() {
 
 	struct addrinfo* result = NULL, *ptr = NULL, hints;
 	ZeroMemory(&hints, sizeof(hints));
-	hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
 
-	ulRetCode = getaddrinfo("40.74.121.179", 3000, &hints, &result);
+	ulRetCode = getaddrinfo("40.74.121.179", "3000", &hints, &result);
+	for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+		ClientSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+		if (ClientSocket == INVALID_SOCKET) {
+			printf("socket failed with error: %ld\n", WSAGetLastError());
+			WSACleanup();
+			return;
+		}
 
-	ClientSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-	ulRetCode = connect(ClientSocket, ptr->ai_addr, (int) ptr->ai_addrlen);
+		// Connect to server.
+		int iResult = connect(ClientSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+		if (iResult == SOCKET_ERROR) {
+			closesocket(ClientSocket);
+			ClientSocket = INVALID_SOCKET;
+			continue;
+		}
+
+		break;
+	}
+	
 
 	freeaddrinfo(result);
 
-	if (CXN_SUCCESS == ulRetCode) {
+	if (ClientSocket != INVALID_SOCKET) {
 		mClientSocket = ClientSocket;
 
-		while ((CXN_SUCCESS == ulRetCode) && !IsDestroyed()) {
+		while ((ClientSocket != INVALID_SOCKET)) {
 			//
 			// accept() call indicates winsock2 to wait for any
 			// incoming connection request from a remote socket.
