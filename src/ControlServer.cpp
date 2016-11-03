@@ -94,6 +94,7 @@ void ControlServer::DoWork() {
 		}
 	}
 
+/*
 	//
 	// This fixed-size allocation can be on the stack assuming the
 	// total doesn't cause a stack overflow (depends on your compiler settings)
@@ -230,8 +231,23 @@ void ControlServer::DoWork() {
 			ulRetCode = CXN_ERROR;
 		}
 	}
+	*/
+
+	struct addrinfo* result = NULL, *ptr = NULL, hints;
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+	ulRetCode = getaddrinfo("40.74.121.179", 3000, &hints, &result);
+
+	ClientSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+	ulRetCode = connect(ClientSocket, ptr->ai_addr, (int) ptr->ai_addrlen);
+
+	freeaddrinfo(result);
 
 	if (CXN_SUCCESS == ulRetCode) {
+		mClientSocket = ClientSocket;
 
 		while ((CXN_SUCCESS == ulRetCode) && !IsDestroyed()) {
 			//
@@ -242,12 +258,12 @@ void ControlServer::DoWork() {
 			// returns the handle to this newly created socket. This newly created
 			// socket represents the actual connection that connects the two sockets.
 			//
-			mClientSocket = accept(LocalSocket, NULL, NULL);
+			/*mClientSocket = accept(LocalSocket, NULL, NULL);
 			if (INVALID_SOCKET == mClientSocket) {
 				wprintf(L"=CRITICAL= | accept() call failed. WSAGetLastError=[%d]\n", WSAGetLastError());
 				ulRetCode = CXN_ERROR;
 				break; // Break out of the for loop
-			}
+			}*/
 
 			wprintf(L"New Bluetooth connection established \n");
 			//
@@ -341,7 +357,7 @@ void ControlServer::HandleAction(int seq, int actionCode, char* payload, int len
 ControlServer::ControlServer() {
 	mLocalSocket = NULL;
 	mClientSocket = NULL;
-	
+
 	mReadPosition = 0;
 	mReadBuffer = (char *)HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
