@@ -1,13 +1,48 @@
 #include <iostream>
 #include <zed/Camera.hpp>
 
-#include <opencv2/highgui\/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <stdio.h>
+#include "utils.h"
+// #include "opencv2/imgproc/imgproc.hpp"
+// #include "opencv2/highgui/highgui.hpp"
+// #include <opencv2\opencv.hpp>
+#include <math.h>
 
-#define DEPTH_CLAMP		1000
+// #include <opencv2/highgui\/highgui.hpp>
+// #include <opencv2/imgproc/imgproc.hpp>
+
+#define DEPTH_CLAMP		1200
 #define DIFFERENCE		20
 #define DISPLAY_WIDTH	720
 #define DISPLAY_HEIGHT	404
+
+struct Lane {
+	Lane(){}
+	Lane(CvPoint a, CvPoint b, float angle, float kl, float bl) : p0(a), p1(b), angle(angle),
+		votes(0), visited(false), found(false), k(kl), b(bl) { }
+
+	CvPoint p0, p1;
+	int votes;
+	bool visited, found;
+	float angle, k, b;
+};
+
+struct Status {
+
+	Status() :reset(true), lost(0){}
+	ExpMovingAverage k, b;
+	bool reset;
+	int lost;
+};
+
+
+struct RenderResult {
+	bool center;
+	bool left;
+	bool right;
+	double leftObjectVelocity;
+	double rightObjectVelocity;
+};
 
 class Camera {
 public:
@@ -31,7 +66,28 @@ public:
 	cv::Mat *imageThreasholded;
 	cv::Mat *drawing;
 
+	SYSTEMTIME lastLeftObjectTime;
+	int lastLeftSideRightmost;
+
+	SYSTEMTIME lastRightObjectTime;
+	int lastRightSideLeftmost;
+
+	Status laneR, laneL;
+	int center = -1;
+
+	CvMemStorage* houghStorage;
+
+	CvSize frameSize;
+	IplImage * tempFrame;
+	IplImage *grey;
+	IplImage *edges;
+	IplImage *halfFrame;
+
 	bool Initialize();
-	void Render();
-	void CheckObjects();
+	RenderResult Render();
+	RenderResult CheckObjects();
+	void CheckLanes(IplImage* image);
+
+	bool processSide(std::vector<Lane> lanes, IplImage *edges, bool right);
+	int processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame);
 };
