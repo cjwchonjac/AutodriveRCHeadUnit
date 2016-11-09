@@ -440,7 +440,7 @@ RenderResult Camera::CheckObjects() {
 			bool right = false;
 			bool center = false;
 
-			if (y < DISPLAY_HEIGHT * 2 / 3) {
+			if (y < DISPLAY_HEIGHT * 1 / 2) {
 				filtered.push_back(cv::Point(x, y));
 
 				if (x > DISPLAY_WIDTH * 4 / 5) {
@@ -509,13 +509,15 @@ bool Camera::Initialize() {
 	}
 
 	zed->setDepthClampValue(DEPTH_CLAMP);
-
+	
 	// Initialize color image and depth
 	imageWidth = zed->getImageSize().width;
 	imageHeight = zed->getImageSize().height;
 	imageLeft = new cv::Mat(imageHeight, imageWidth, CV_8UC4, 1);
 	imageRight = new cv::Mat(imageHeight, imageWidth, CV_8UC4, 1);
 	depth = new cv::Mat(imageHeight, imageWidth, CV_8UC4, 1);
+
+	center = imageWidth / 2;
 
 	cv::namedWindow("ImageLeft", cv::WINDOW_AUTOSIZE);
 	cv::namedWindow("ImageRight", cv::WINDOW_AUTOSIZE);
@@ -525,6 +527,8 @@ bool Camera::Initialize() {
 	cv::setMouseCallback("ImageRight", RightImageClicked, this);
 
 	rng = new cv::RNG(12345);
+
+	
 
 	contours = new std::vector<std::vector<cv::Point>>();
 	hierachy = new std::vector<cv::Vec4i>();
@@ -542,11 +546,12 @@ bool Camera::Initialize() {
 	edges = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
 	halfFrame = cvCreateImage(cvSize(imageWidth / 2, imageHeight / 2), IPL_DEPTH_8U, 4);
 
+	writer = cvCreateVideoWriter("output.avi", CV_FOURCC('M', 'J', 'P', 'G'), 15, CvSize(imageWidth, imageHeight), 1);
 	houghStorage = cvCreateMemStorage(0);
 	return true;
 }
 
-void Camera::CheckLanes(IplImage* frame) {
+double Camera::CheckLanes(IplImage* frame) {
 	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2	 
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
@@ -586,6 +591,7 @@ void Camera::CheckLanes(IplImage* frame) {
 	// cvShowImage("Grey", grey);
 	// cvShowImage("Edges", edges);
 	cvShowImage("Color", tempFrame);
+	return center;
 }
 
 RenderResult Camera::Render() {
@@ -604,8 +610,7 @@ RenderResult Camera::Render() {
 		sl::zed::Mat right = zed->retrieveImage(sl::zed::SIDE::RIGHT);
 		memcpy((*imageRight).data, right.data, width*height * 4 * sizeof(uchar));
 
-		IplImage frame(*imageRight);
-		CheckLanes(&frame);
+		
 
 		// Retrieve depth map
 		sl::zed::Mat depthmap = zed->normalizeMeasure(sl::zed::MEASURE::DEPTH);
@@ -637,6 +642,11 @@ RenderResult Camera::Render() {
 		}
 
 		cv::imshow("ImageLeft", *drawing);
+		RenderResult rr = CheckObjects();
+
+		IplImage frame(*imageRight);
+		cvWriteFrame(writer, &frame);
+		rr.laneDirection = CheckLanes(&frame);
 		return CheckObjects();
 		// cv::imshow("ImageRight", depthDisplay);
 	}

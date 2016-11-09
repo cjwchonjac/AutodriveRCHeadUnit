@@ -6,6 +6,7 @@
 #include <intsafe.h>
 #include <ws2tcpip.h>
 
+
 #define AUTODRIVE_PROTOCL_HEADER_PATTERN	"autocar!"
 
 #define AUTODRIVE_PROTOCOL_HEADER_PATTERN_OFFSET			0
@@ -28,8 +29,22 @@
 #define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_PING 0x00000000
 #define AUTODRIVE_PROTOCOL_ACTION_CODE_SERVER_TO_CLIENT_PING 0x00000001
 
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_INITIALIZE 0x10000000
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_SERVER_TO_CLIENT_INITIALIZE 0x10000001
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_SERVER_TO_CLIENT_INITIALIZE_FAILED 0x10000002
+
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEND_LOCATION_DATA 0x20000001
+
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEND_SEMGENT_LIST	0x30000000
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEGMENT_ARRIVED		0x30000001
+
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_DESTINATION_ARRIVED		0x40000000
+
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_CONTROL_START		0x50000000
+#define AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_CONTROL_END		0x50000001
+
 // {B62C4E8D-62CC-404b-BBBF-BF3E3BBB1374}
-DEFINE_GUID(g_guidServiceClass, 0x50038ec2, 0x6485, 0x4a54, 0xa8, 0xee, 0x99, 0x7d, 0x8e, 0x1e, 0xda, 0xa3);
+DEFINE_GUID(g_guidServiceClass, 0x50038ec2, 0x6485, 0x4a54, 0xa8, 0xee, 0x99, 0x7d, 0x8e, 0x1e, 0xda, 0xa4);
 
 #define CXN_READ_BUFFER_SIZE			  1024 * 1024
 
@@ -45,6 +60,15 @@ DEFINE_GUID(g_guidServiceClass, 0x50038ec2, 0x6485, 0x4a54, 0xa8, 0xee, 0x99, 0x
 #define CXN_INSTANCE_STRING L"Autodrive Bluetooth Server"
 
 #include "ControlServer.h"
+
+#include <iostream>
+
+struct membuf : std::streambuf
+{
+	membuf(char* begin, char* end) {
+		this->setg(begin, begin, end);
+	}
+};
 
 struct AUTODRIVE_HEADER {
 	char pattern[8];
@@ -95,12 +119,12 @@ void ControlServer::DoWork() {
 		}
 	}
 
-/*
 	//
 	// This fixed-size allocation can be on the stack assuming the
 	// total doesn't cause a stack overflow (depends on your compiler settings)
 	// However, they are shown here as dynamic to allow for easier expansion
 	//
+	/*
 	lpCSAddrInfo = (LPCSADDR_INFO)HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
 		sizeof(CSADDR_INFO));
@@ -227,12 +251,12 @@ void ControlServer::DoWork() {
 	// listen() call indicates winsock2 to listen on a given socket for any incoming connection.
 	//
 	if (CXN_SUCCESS == ulRetCode) {
+		wprintf(L"Waiting for listen \n");
 		if (SOCKET_ERROR == listen(LocalSocket, CXN_DEFAULT_LISTEN_BACKLOG)) {
 			wprintf(L"=CRITICAL= | listen() call failed w/socket = [0x%I64X]. WSAGetLastError=[%d]\n", (ULONG64)LocalSocket, WSAGetLastError());
 			ulRetCode = CXN_ERROR;
 		}
-	}
-	*/
+	}*/
 
 	struct addrinfo* result = NULL, *ptr = NULL, hints;
 	ZeroMemory(&hints, sizeof(hints));
@@ -249,7 +273,7 @@ void ControlServer::DoWork() {
 			return;
 		}
 
-		// Connect to server.
+	// Connect to server.
 		int iResult = connect(ClientSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
 		if (iResult == SOCKET_ERROR) {
 			closesocket(ClientSocket);
@@ -259,14 +283,16 @@ void ControlServer::DoWork() {
 
 		break;
 	}
-	
+
 
 	freeaddrinfo(result);
+
 
 	if (ClientSocket != INVALID_SOCKET) {
 		mClientSocket = ClientSocket;
 
 		while ((ClientSocket != INVALID_SOCKET)) {
+
 			//
 			// accept() call indicates winsock2 to wait for any
 			// incoming connection request from a remote socket.
@@ -275,6 +301,7 @@ void ControlServer::DoWork() {
 			// returns the handle to this newly created socket. This newly created
 			// socket represents the actual connection that connects the two sockets.
 			//
+			wprintf(L"Waiting for connection \n");
 			/*mClientSocket = accept(LocalSocket, NULL, NULL);
 			if (INVALID_SOCKET == mClientSocket) {
 				wprintf(L"=CRITICAL= | accept() call failed. WSAGetLastError=[%d]\n", WSAGetLastError());
@@ -368,13 +395,100 @@ void ControlServer::DoWork() {
 }
 
 void ControlServer::HandleAction(int seq, int actionCode, char* payload, int length) {
-	printf("ping with seq %d\n", seq);
+	switch (actionCode)
+	{
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_PING:
+		// printf("ping with seq %d\n", seq);
+		Write(seq, AUTODRIVE_PROTOCOL_ACTION_CODE_SERVER_TO_CLIENT_PING, 0, NULL);
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_INITIALIZE:
+		Write(seq, AUTODRIVE_PROTOCOL_ACTION_CODE_SERVER_TO_CLIENT_INITIALIZE, 0, NULL);
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEND_LOCATION_DATA: {
+		membuf buf(payload, payload + length);
+		com::autodrive::message::LocationMessage* message = new com::autodrive::message::LocationMessage();
+		std::istream stream(&buf);
+		message->ParseFromIstream(&stream);
+
+		// printf("message %f %f", message->latitude(), message->longitude());
+	
+		EnterCriticalSection(&mPositionCS);
+		mCurrentPosition.x = message->latitude();
+		mCurrentPosition.y = message->longitude();
+		LeaveCriticalSection(&mPositionCS);
+		delete message;
+	}
+		
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEND_SEMGENT_LIST:
+	{
+		membuf buf(payload, payload + length);
+		com::autodrive::message::SegmentList* list = new com::autodrive::message::SegmentList();
+		std::istream stream(&buf);
+		list->ParseFromIstream(&stream);
+
+		EnterCriticalSection(&mSegmentCS);
+		mSegments.clear();
+
+		const int size = list->locations_size();
+		for (int idx = 0; idx < size; idx++) {
+			com::autodrive::message::LocationMessage message = list->locations(idx);
+			
+			Coord coord;
+			coord.x = message.latitude();
+			coord.y = message.longitude();
+			mSegments.push_back(coord);
+			printf("message %f %f\n", message.latitude(), message.longitude());
+		}
+		LeaveCriticalSection(&mSegmentCS);
+		delete list;
+	}
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_SEGMENT_ARRIVED:
+	{
+		membuf buf(payload, payload + length);
+		com::autodrive::message::SegmentArrived* arrived = new com::autodrive::message::SegmentArrived();
+		std::istream stream(&buf);
+		arrived->ParseFromIstream(&stream);
+
+		ADRequest rq;
+		rq.type = CONTROL_REQUEST_SEGMENT_ARRIVED;
+		rq.data = arrived;
+		mq->offer(rq);
+	}
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_DESTINATION_ARRIVED:
+	{
+		ADRequest rq;
+		rq.type = CONTROL_REQUEST_DESTINATION_ARRIVED;
+		rq.data = NULL;
+		mq->offer(rq);
+	}
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_CONTROL_START:
+	{
+		ADRequest rq;
+		rq.type = CONTROL_REQUEST_START;
+		rq.data = NULL;
+		mq->offer(rq);
+	}
+		break;
+	case AUTODRIVE_PROTOCOL_ACTION_CODE_CLIENT_TO_SERVER_CONTROL_END:
+	{
+		ADRequest rq;
+		rq.type = CONTROL_REQUEST_END;
+		rq.data = NULL;
+		mq->offer(rq);
+	}
+		break;
+	}
 }
 
-ControlServer::ControlServer() {
+ControlServer::ControlServer(ADMQ* q) {
+	mq = q;
 	mLocalSocket = NULL;
 	mClientSocket = NULL;
-
+	
 	mReadPosition = 0;
 	mReadBuffer = (char *)HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
@@ -387,6 +501,12 @@ ControlServer::ControlServer() {
 	mCoreHandle = NULL;
 	mWriteWorkHandle = NULL;
 	mConnectionCheckHandle = NULL;
+
+	mCurrentPosition.x = 0.0;
+	mCurrentPosition.y = 0.0;
+
+	InitializeCriticalSection(&mPositionCS);
+	InitializeCriticalSection(&mSegmentCS);
 }
 
 ControlServer::~ControlServer() {
@@ -403,6 +523,9 @@ ControlServer::~ControlServer() {
 		HeapFree(GetProcessHeap(), 0, mReadBuffer);
 		mReadBuffer = NULL;
 	}
+
+	DeleteCriticalSection(&mSegmentCS);
+	DeleteCriticalSection(&mPositionCS);
 }
 
 void ControlServer::Start() {
@@ -431,8 +554,10 @@ bool ControlServer::IsDestroyed() {
 
 void ControlServer::Write(int seq, int action, int size, char* payload) {
 	if (INVALID_SOCKET != mClientSocket) {
-		send(mClientSocket, (const char*)AUTODRIVE_PROTOCL_HEADER_PATTERN, sizeof(int), 0);
-		send(mClientSocket, (const char*)&seq, AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE, 0);
+		int version = 1;
+		send(mClientSocket, (const char*)AUTODRIVE_PROTOCL_HEADER_PATTERN, AUTODRIVE_PROTOCOL_HEADER_PATTERN_SIZE, 0);
+		send(mClientSocket, (const char*)&version, AUTODRIVE_PROTOCOL_HEADER_VERSION_SIZE, 0);
+		send(mClientSocket, (const char*)&seq, AUTODRIVE_PROTOCOL_HEADER_SEQUENCE_NUMBER_SIZE, 0);
 		send(mClientSocket, (const char*)&action, AUTODRIVE_PROTOCOL_HEADER_ACTION_CODE_SIZE, 0);
 		send(mClientSocket, (const char*)&size, AUTODRIVE_PROTOCOL_HEADER_PAYLOAD_SIZE_SIZE, 0);
 
@@ -440,4 +565,24 @@ void ControlServer::Write(int seq, int action, int size, char* payload) {
 			send(mClientSocket, (const char*)payload, size, 0);
 		}
 	}
+}
+
+Coord ControlServer::GetCurrentPosition() {
+	Coord coord;
+	EnterCriticalSection(&mPositionCS);
+	memcpy(&coord, &mCurrentPosition, sizeof(coord));
+	LeaveCriticalSection(&mPositionCS);
+
+	return coord;
+}
+
+std::vector<Coord> ControlServer::GetSegments() {
+	std::vector<Coord> coords;
+	EnterCriticalSection(&mSegmentCS);
+	for (int idx = 0; idx < mSegments.size(); idx++) {
+		coords.push_back(mSegments.at(idx));
+	}
+	
+	LeaveCriticalSection(&mSegmentCS);
+	return coords;
 }

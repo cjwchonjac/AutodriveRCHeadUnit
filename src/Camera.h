@@ -11,7 +11,7 @@
 // #include <opencv2/highgui\/highgui.hpp>
 // #include <opencv2/imgproc/imgproc.hpp>
 
-#define DEPTH_CLAMP		1200
+#define DEPTH_CLAMP		2000
 #define DIFFERENCE		20
 #define DISPLAY_WIDTH	720
 #define DISPLAY_HEIGHT	404
@@ -40,6 +40,7 @@ struct RenderResult {
 	bool center;
 	bool left;
 	bool right;
+	double laneDirection;
 	double leftObjectVelocity;
 	double rightObjectVelocity;
 };
@@ -65,6 +66,8 @@ public:
 	cv::Mat *depthDisplay;
 	cv::Mat *imageThreasholded;
 	cv::Mat *drawing;
+	
+	CvVideoWriter* writer;
 
 	SYSTEMTIME lastLeftObjectTime;
 	int lastLeftSideRightmost;
@@ -86,7 +89,7 @@ public:
 	bool Initialize();
 	RenderResult Render();
 	RenderResult CheckObjects();
-	void CheckLanes(IplImage* image);
+	double CheckLanes(IplImage* image);
 
 	bool processSide(std::vector<Lane> lanes, IplImage *edges, bool right);
 	int processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame);
