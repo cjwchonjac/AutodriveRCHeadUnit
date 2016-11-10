@@ -373,7 +373,6 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 	CvPoint r2(x2, laneL.k.get() * x2 + laneL.b.get());
 	cvLine(temp_frame, r1, r2, CV_RGB(255, 0, 255), 2);
 
-
 	if (!laneR.reset && !laneL.reset && lValid && rValid) {
 		// parellel case
 		int det = ((l1.x - l2.x) * (r1.y - r2.y) - (l1.y - l2.y) * (r1.x - r2.x));
@@ -406,6 +405,38 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 
 		return cx;
 
+	}
+	else if (!laneR.reset && rValid) {
+		double rx = r2.x - r1.x;
+		double ry = r2.y - r1.y;
+		double rSlope = rx == 0 ? 90.0 : atan2(ry, rx) * 180.0 / CV_PI;
+
+		if (rx == 0) {
+			return -1;
+		}
+
+		if (rSlope >= 0) {
+			return -1;
+		}
+
+		double cx = r1.y / ry * rx + r1.x;
+		return cx;
+	}
+	else if (!laneL.reset && lValid) {
+		double lx = l2.x - l1.x;
+		double ly = l2.y - l1.y;
+		double lSlope = lx == 0 ? 90.0 : atan2(ly, lx) * 180.0 / CV_PI;
+
+		if (lx == 0) {
+			return -1;
+		}
+
+		if (lSlope >= 0) {
+			return -1;
+		}
+
+		double cx = l1.y / ly * lx + l1.x;
+		return cx;
 	}
 
 	return -1;
@@ -528,8 +559,6 @@ bool Camera::Initialize() {
 
 	rng = new cv::RNG(12345);
 
-	
-
 	contours = new std::vector<std::vector<cv::Point>>();
 	hierachy = new std::vector<cv::Vec4i>();
 
@@ -540,15 +569,21 @@ bool Camera::Initialize() {
 	imageThreasholded = new cv::Mat(*displaySize, CV_8UC4);
 	drawing = new cv::Mat(*displaySize, CV_8UC4);
 
+	InitLaneOnly(imageWidth, imageHeight, 4);
+	return true;
+}
+
+void Camera::InitLaneOnly(int width, int height, int channels) {
+	imageWidth = width;
+	imageHeight = height;
+
 	frameSize = cvSize(imageWidth, imageHeight / 2);
-	tempFrame = cvCreateImage(frameSize, IPL_DEPTH_8U, 4);
+	tempFrame = cvCreateImage(frameSize, IPL_DEPTH_8U, channels);
 	grey = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
 	edges = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
-	halfFrame = cvCreateImage(cvSize(imageWidth / 2, imageHeight / 2), IPL_DEPTH_8U, 4);
+	halfFrame = cvCreateImage(cvSize(imageWidth / 2, imageHeight / 2), IPL_DEPTH_8U, channels);
 
-	writer = cvCreateVideoWriter("output.avi", CV_FOURCC('M', 'J', 'P', 'G'), 15, CvSize(imageWidth, imageHeight), 1);
 	houghStorage = cvCreateMemStorage(0);
-	return true;
 }
 
 double Camera::CheckLanes(IplImage* frame) {
@@ -556,10 +591,12 @@ double Camera::CheckLanes(IplImage* frame) {
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
 	crop(frame, tempFrame, cvRect(0, frameSize.height, frameSize.width, frameSize.height));
+	
+	// cvSmooth(tempFrame, tempFrame, CV_GAUSSIAN, 5, 5);
 	cvCvtColor(tempFrame, grey, CV_BGR2GRAY); // convert to grayscale
 	// Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges
 
-	cvSmooth(grey, grey, CV_GAUSSIAN, 5, 5);
+	cvSmooth(grey, grey, CV_GAUSSIAN, 15, 15);
 	cvCanny(grey, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
 
 	// do Hough transform to find lanes
@@ -576,22 +613,22 @@ double Camera::CheckLanes(IplImage* frame) {
 	center = center - (LPF_Beta * (center - cx));
 	cvDrawCircle(tempFrame, CvPoint(center, frameSize.height / 2), 5, CV_RGB(255, 0, 255), 3);
 
-	double ratio = (center - (frameSize.width / 2)) / (frameSize.width / 2);
+	double ratio = ((double) center - (frameSize.width / 2)) / (frameSize.width / 2);
 
 	// process vehicles
 
 	//vehicleDetection(half_frame, cascade, haarStorage);
 	//drawVehicles(half_frame);
-	// cvShowImage("Half-frame", halfFrame);
+	//cvShowImage("Half-frame", halfFrame);
 
 	// show middle line
 	cvLine(tempFrame, cvPoint(frameSize.width / 2, 0),
 		cvPoint(frameSize.width / 2, frameSize.height), CV_RGB(255, 255, 0), 1);
 
-	// cvShowImage("Grey", grey);
-	// cvShowImage("Edges", edges);
+	cvShowImage("Grey", grey);
+	cvShowImage("Edges", edges);
 	cvShowImage("Color", tempFrame);
-	return center;
+	return ratio;
 }
 
 RenderResult Camera::Render() {
@@ -645,7 +682,6 @@ RenderResult Camera::Render() {
 		RenderResult rr = CheckObjects();
 
 		IplImage frame(*imageRight);
-		cvWriteFrame(writer, &frame);
 		rr.laneDirection = CheckLanes(&frame);
 		return CheckObjects();
 		// cv::imshow("ImageRight", depthDisplay);

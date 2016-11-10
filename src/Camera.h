@@ -66,8 +66,6 @@ public:
 	cv::Mat *depthDisplay;
 	cv::Mat *imageThreasholded;
 	cv::Mat *drawing;
-	
-	CvVideoWriter* writer;
 
 	SYSTEMTIME lastLeftObjectTime;
 	int lastLeftSideRightmost;
@@ -87,6 +85,7 @@ public:
 	IplImage *halfFrame;
 
 	bool Initialize();
+	void InitLaneOnly(int width, int height, int channels);
 	RenderResult Render();
 	RenderResult CheckObjects();
 	double CheckLanes(IplImage* image);
