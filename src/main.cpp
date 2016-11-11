@@ -1,3 +1,7 @@
+
+// #define TEST_RECORDED_VIDEO
+
+#ifndef TEST_RECORDED_VIDEO
 #include "Driver.h"
 #include "Camera.h"
 #include "ControlServer.h"
@@ -8,7 +12,6 @@
 
 using namespace std;
 using namespace com::autodrive::message;
-
 int main() {
 	LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
 	LARGE_INTEGER Frequency;
@@ -114,3 +117,34 @@ int main() {
 
 	return 0;
 }
+
+#else
+	#include "Camera.h"
+
+	int main(void) {
+		Camera c;
+		bool init = false;
+		CvCapture* capture = cvCapturefromFile("output.avi");
+
+		if (capture) {
+			double fps = cvGetCaptureProperty(
+			            capture,
+			            CV_CAP_PROP_FPS
+			            );
+			while (1) {
+				IplImage* image = cvQueryFrame(capture);
+
+				if (image) {
+					if (!init) {
+						c.InitLaneOnly(image->width, image->height, image->nChannels);
+					}
+
+					double value = c.CheckLanes(image);
+					printf("lane value: %f\n", value);
+				}
+			}
+		}
+
+		return 0;
+	}
+#endif

@@ -332,11 +332,11 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 
 		// assume that vanishing point is close to the image horizontal center
 		// calculate line parameters: y = kx + b;
-		dx = (dx == 0) ? 1 : dx; // prevent DIV/0!  
+		dx = (dx == 0) ? 1 : dx; // prevent DIV/0!
 		float k = dy / (float)dx;
 		float b = line[0].y - k*line[0].x;
 
-		// assign lane's side based by its midpoint position 
+		// assign lane's side based by its midpoint position
 		int midx = (line[0].x + line[1].x) / 2;
 		if (midx < temp_frame->width / 2) {
 			left.push_back(Lane(line[0], line[1], angle, k, b));
@@ -540,7 +540,7 @@ bool Camera::Initialize() {
 	}
 
 	zed->setDepthClampValue(DEPTH_CLAMP);
-	
+
 	// Initialize color image and depth
 	imageWidth = zed->getImageSize().width;
 	imageHeight = zed->getImageSize().height;
@@ -569,6 +569,12 @@ bool Camera::Initialize() {
 	imageThreasholded = new cv::Mat(*displaySize, CV_8UC4);
 	drawing = new cv::Mat(*displaySize, CV_8UC4);
 
+	writer = cvCreateVideoWriter("output.avi",
+                              CV_FOURCC('D', 'I', 'V', '3'),
+                              15,
+                              CvSize(imageWidth, imageHeight),
+                              1);
+
 	InitLaneOnly(imageWidth, imageHeight, 4);
 	return true;
 }
@@ -587,11 +593,11 @@ void Camera::InitLaneOnly(int width, int height, int channels) {
 }
 
 double Camera::CheckLanes(IplImage* frame) {
-	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2	 
+	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
 	crop(frame, tempFrame, cvRect(0, frameSize.height, frameSize.width, frameSize.height));
-	
+
 	// cvSmooth(tempFrame, tempFrame, CV_GAUSSIAN, 5, 5);
 	cvCvtColor(tempFrame, grey, CV_BGR2GRAY); // convert to grayscale
 	// Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges
@@ -647,7 +653,7 @@ RenderResult Camera::Render() {
 		sl::zed::Mat right = zed->retrieveImage(sl::zed::SIDE::RIGHT);
 		memcpy((*imageRight).data, right.data, width*height * 4 * sizeof(uchar));
 
-		
+
 
 		// Retrieve depth map
 		sl::zed::Mat depthmap = zed->normalizeMeasure(sl::zed::MEASURE::DEPTH);
@@ -682,6 +688,7 @@ RenderResult Camera::Render() {
 		RenderResult rr = CheckObjects();
 
 		IplImage frame(*imageRight);
+		cvWriteFrame(writer, &frame);
 		rr.laneDirection = CheckLanes(&frame);
 		return CheckObjects();
 		// cv::imshow("ImageRight", depthDisplay);

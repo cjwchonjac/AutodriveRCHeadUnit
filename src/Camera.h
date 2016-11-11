@@ -77,6 +77,7 @@ public:
 	int center = -1;
 
 	CvMemStorage* houghStorage;
+	CvVideoWriter* writer;
 
 	CvSize frameSize;
 	IplImage * tempFrame;
