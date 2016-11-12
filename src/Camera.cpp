@@ -318,6 +318,35 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 	// classify lines to left/right side
 
 	std::vector<Lane> left, right;
+	std::vector<std::vector<cv::Point>> lineSegments;
+	std::vector<std::vector<std::vector<cv::Point>>> clusters;
+	std::vector<int> inliers;
+	std::vector<cv::Mat> vps;
+	double cx = -1.0;
+	bool justCalc = false;
+
+	for (int i = 0; i < lines->total; i++)
+	{
+		CvPoint* line = (CvPoint*)cvGetSeqElem(lines, i);
+		std::vector<cv::Point> seg;
+		seg.push_back(line[0]);
+		seg.push_back(line[1]);
+		lineSegments.push_back(seg);
+	}
+
+	msac.multipleVPEstimation(lineSegments, clusters, inliers, vps, 1);
+	if (vps.size() > 0) {
+		cv::Mat mat = vps.at(0);
+		float d1 = mat.at<float>(0, 0);
+		float d2 = mat.at<float>(1, 0);
+		// printf("vps %f, %f\n", d1, d2);
+
+		if (0 < d1 && d1 < imageWidth) {
+			cx = d1;
+			justCalc = true;
+		}
+		
+	}
 
 	for (int i = 0; i < lines->total; i++)
 	{
@@ -373,11 +402,15 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 	CvPoint r2(x2, laneL.k.get() * x2 + laneL.b.get());
 	cvLine(temp_frame, r1, r2, CV_RGB(255, 0, 255), 2);
 
+	if (justCalc) {
+		return cx;
+	}
+
 	if (!laneR.reset && !laneL.reset && lValid && rValid) {
 		// parellel case
 		int det = ((l1.x - l2.x) * (r1.y - r2.y) - (l1.y - l2.y) * (r1.x - r2.x));
 		if (det == 0) {
-			return -1;
+			return cx;
 		}
 
 		double lx = l2.x - l1.x;
@@ -390,11 +423,11 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		// printf("lSlope : %f, rSlope: %f\n", lSlope, rSlope);
 
 		if (lSlope <= 0) {
-			return -1;
+			return cx;
 		}
 
 		if (rSlope >= 0) {
-			return -1;
+			return cx;
 		}
 
 
@@ -410,13 +443,21 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		double rx = r2.x - r1.x;
 		double ry = r2.y - r1.y;
 		double rSlope = rx == 0 ? 90.0 : atan2(ry, rx) * 180.0 / CV_PI;
+		/*
+		if (r2.y < r1.y && r2.y > 0) {
+			return r2.x;
+		}
+
+		if (r1.y < r2.y && r1.y > 0) {
+			return r1.x;
+		}*/
 
 		if (rx == 0) {
-			return -1;
+			return cx;
 		}
 
 		if (rSlope >= 0) {
-			return -1;
+			return cx;
 		}
 
 		double cx = r1.y / ry * rx + r1.x;
@@ -427,19 +468,28 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		double ly = l2.y - l1.y;
 		double lSlope = lx == 0 ? 90.0 : atan2(ly, lx) * 180.0 / CV_PI;
 
+		/*
+		if (l2.y < l1.y && l2.y > 0) {
+			return l2.x;
+		}
+
+		if (l1.y < l2.y && l1.y > 0) {
+			return l1.x;
+		}*/
+
 		if (lx == 0) {
-			return -1;
+			return cx;
 		}
 
 		if (lSlope >= 0) {
-			return -1;
+			return cx;
 		}
 
 		double cx = l1.y / ly * lx + l1.x;
 		return cx;
 	}
 
-	return -1;
+	return cx;
 }
 
 
@@ -583,26 +633,27 @@ void Camera::InitLaneOnly(int width, int height, int channels) {
 	imageWidth = width;
 	imageHeight = height;
 
-	frameSize = cvSize(imageWidth, imageHeight / 2);
+	frameSize = cvSize(imageWidth, imageHeight * 2 / 5);
 	tempFrame = cvCreateImage(frameSize, IPL_DEPTH_8U, channels);
 	grey = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
 	edges = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
 	halfFrame = cvCreateImage(cvSize(imageWidth / 2, imageHeight / 2), IPL_DEPTH_8U, channels);
 
 	houghStorage = cvCreateMemStorage(0);
+	msac.init(MODE_LS, frameSize);
 }
 
 double Camera::CheckLanes(IplImage* frame) {
 	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
-	crop(frame, tempFrame, cvRect(0, frameSize.height, frameSize.width, frameSize.height));
+	crop(frame, tempFrame, cvRect(0, imageHeight * 3 / 5, frameSize.width, imageHeight * 2 / 5));
 
 	// cvSmooth(tempFrame, tempFrame, CV_GAUSSIAN, 5, 5);
 	cvCvtColor(tempFrame, grey, CV_BGR2GRAY); // convert to grayscale
 	// Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges
 
-	cvSmooth(grey, grey, CV_GAUSSIAN, 15, 15);
+	cvSmooth(grey, grey, CV_GAUSSIAN, 9, 9);
 	cvCanny(grey, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
 
 	// do Hough transform to find lanes
@@ -689,8 +740,9 @@ RenderResult Camera::Render() {
 
 		IplImage frame(*imageRight);
 		cvWriteFrame(writer, &frame);
+		rr = CheckObjects();
 		rr.laneDirection = CheckLanes(&frame);
-		return CheckObjects();
+		return rr;
 		// cv::imshow("ImageRight", depthDisplay);
 	}
 

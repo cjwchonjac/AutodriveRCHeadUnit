@@ -629,7 +629,7 @@ void MSAC::estimateNIETO(cv::Mat &Li, cv::Mat &Lengths, cv::Mat &Mi, std::vector
 	double par[] = {theta, phi};
 
 	lm_control_struct control = lm_control_double;
-	control.epsilon = 1e-5;	// less than 1º
+	control.epsilon = 1e-5;	// less than 1?
 	if(__verbose)
 		control.printflags = 2; //monitor status (+1) and parameters (+2), (4): residues at end of fit, (8): residuals at each step
 	else

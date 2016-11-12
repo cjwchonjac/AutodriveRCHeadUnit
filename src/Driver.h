@@ -23,14 +23,14 @@ struct DriveInfo {
 class DriveAction {
 public:
   virtual int GetType() = 0;
-  virtual bool Drive(DriveInfo info) = 0;
+  virtual bool Drive(RoboClaw* roboclaw, uint8_t addr, DriveInfo info) = 0;
 };
 
 class TurnAction {
 public:
   TurnAction(double ang);
   virtual int GetType();
-  virtual bool Drive(DriveInfo info);
+  virtual bool Drive(RoboClaw* roboclaw, uint8_t addr, DriveInfo info);
 private:
   bool wait;
   bool turn;
@@ -41,14 +41,15 @@ private:
 
 class LaneAction {
 public:
-  LaneAction();
+	LaneAction(double ratio);
   virtual int GetType();
-  virtual bool Drive(DriveInfo info);
+  virtual bool Drive(RoboClaw* roboclaw, uint8_t addr, DriveInfo info);
 private:
+	double ratio;
   bool turn;
   bool recover;
   int64_t startTick;
-}
+};
 
 class Driver {
 private:
@@ -57,11 +58,20 @@ private:
   int currentSpeed;
   stack<DriveAction*> actions;
 
+  int controlM1;
+  int controlM2;
+
 public:
   Driver(RoboClaw* r, uint8_t address);
   ~Driver();
 
-  Start();
-  Drive(DriveInfo info);
-  End();
+  void Start();
+  void Drive(DriveInfo info);
+  void End();
+
+  void Go();
+  void Stop();
+  void Left();
+  void Right();
+  void Back();
 };

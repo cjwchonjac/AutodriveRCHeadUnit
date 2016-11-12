@@ -2,6 +2,7 @@
 #include <zed/Camera.hpp>
 
 #include <stdio.h>
+#include "MSAC.h"
 #include "utils.h"
 // #include "opencv2/imgproc/imgproc.hpp"
 // #include "opencv2/highgui/highgui.hpp"
@@ -84,6 +85,8 @@ public:
 	IplImage *grey;
 	IplImage *edges;
 	IplImage *halfFrame;
+
+	MSAC msac;
 
 	bool Initialize();
 	void InitLaneOnly(int width, int height, int channels);
