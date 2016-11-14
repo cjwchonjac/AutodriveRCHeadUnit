@@ -15,7 +15,7 @@
 #define B_VARY_FACTOR 20
 #define MAX_LOST_FRAMES 30
 
-const double LPF_Beta = 0.025;
+const double LPF_Beta = 0.2;
 
 CvPoint2D32f sub(CvPoint2D32f b, CvPoint2D32f a) { return cvPoint2D32f(b.x - a.x, b.y - a.y); }
 CvPoint2D32f mul(CvPoint2D32f b, CvPoint2D32f a) { return cvPoint2D32f(b.x*a.x, b.y*a.y); }
@@ -633,7 +633,7 @@ void Camera::InitLaneOnly(int width, int height, int channels) {
 	imageWidth = width;
 	imageHeight = height;
 
-	frameSize = cvSize(imageWidth, imageHeight * 2 / 5);
+	frameSize = cvSize(imageWidth, imageHeight / 2);
 	tempFrame = cvCreateImage(frameSize, IPL_DEPTH_8U, channels);
 	grey = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
 	edges = cvCreateImage(frameSize, IPL_DEPTH_8U, 1);
@@ -647,13 +647,13 @@ double Camera::CheckLanes(IplImage* frame) {
 	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
-	crop(frame, tempFrame, cvRect(0, imageHeight * 3 / 5, frameSize.width, imageHeight * 2 / 5));
+	crop(frame, tempFrame, cvRect(0, frameSize.height, frameSize.width, frameSize.height));
 
 	// cvSmooth(tempFrame, tempFrame, CV_GAUSSIAN, 5, 5);
 	cvCvtColor(tempFrame, grey, CV_BGR2GRAY); // convert to grayscale
 	// Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges
 
-	cvSmooth(grey, grey, CV_GAUSSIAN, 9, 9);
+	cvSmooth(grey, grey, CV_GAUSSIAN, 15, 15);
 	cvCanny(grey, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
 
 	// do Hough transform to find lanes
@@ -703,7 +703,6 @@ RenderResult Camera::Render() {
 		// retrieve right color image
 		sl::zed::Mat right = zed->retrieveImage(sl::zed::SIDE::RIGHT);
 		memcpy((*imageRight).data, right.data, width*height * 4 * sizeof(uchar));
-
 
 
 		// Retrieve depth map

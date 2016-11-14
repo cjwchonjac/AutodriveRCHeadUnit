@@ -1,7 +1,6 @@
 
-// #define TEST_RECORDED_VIDEO
-
-#define TEST_CAMERA_ONLY
+// #define TEST_CAMERA_ONLY
+// #define TEST_FROM_VIDEO
 
 #ifndef TEST_RECORDED_VIDEO
 #include "Driver.h"
@@ -26,20 +25,25 @@ int main() {
 	server->Start();
 
 	// RC Control
-	RoboClaw* roboclaw = NULL;// new RoboClaw();
+	RoboClaw* roboclaw = NULL;
+	// Camera
+	Camera* c = new Camera();
 
-	// RoboClaw Connection
-	/*std::string port(ROBOCLAW_PORT);	///////// COM port ///////
+	roboclaw = new RoboClaw(); std::string port(ROBOCLAW_PORT);
+	///////// COM port ///////
 	if (!roboclaw->begin(port, ROBOCLOW_BAUDRATE)) {
 		cout << "RoboClaw not found" << endl;
 		return 0;
-	}*/
+	}
 
-	// Camera
-	Camera* c = new Camera();
-	/*if (!c->Initialize()) {
+	if (!c->Initialize()) {
 		cout << "Camera not found" << endl;
 		return 0;
+	}
+	/*
+	while (1) {
+		c->Render();
+		cv::waitKey(30);
 	}*/
 
 	Driver* driver = new Driver(roboclaw, 0x80);
@@ -48,27 +52,11 @@ int main() {
 	QueryPerformanceFrequency(&Frequency);
 	QueryPerformanceCounter(&StartingTime);
 
-#ifdef TEST_CAMERA_ONLY
-	Sleep(3000);
-	bool start = true;
-	driver->Start();
-#else
 	bool start = false;
-#endif
-
-	bool init = false;
-	CvCapture* capture = cvCaptureFromFile("road.mp4");
-	if (capture) {
-		double fps = cvGetCaptureProperty(
-			capture,
-			CV_CAP_PROP_FPS
-			);
-	}
 
 	while (1) {
 		ADRequest rq;
 		SegmentArrived* arrived = NULL;
-		IplImage* image = cvQueryFrame(capture);
 
 		do {
 			rq = mq->poll();
@@ -109,17 +97,8 @@ int main() {
 		} while (rq.type > 0);
 
 		if (start) {
-			RenderResult rr = { 0 }; //c->Render();
-			if (image) {
-				if (!init) {
-					c->InitLaneOnly(image->width, image->height, image->nChannels);
-				}
-
-				double value = c->CheckLanes(image);
-				rr.laneDirection = value;
-				// printf("lane value: %f\n", value);
-			}
-
+			RenderResult rr = c->Render();
+			
 			int index = -1;
 			double angle = 0.0;
 

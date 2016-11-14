@@ -3,10 +3,11 @@
 #define DRIVE_ACTION_TYPE_TURN 1
 #define DRIVE_ACTION_TYPE_LANE 2
 
-#define DRIVER_SIMULATION
+// 
+//#define DRIVER_SIMULATION
 
 #define THRESHOLD_TURN_ANGLE	15.0
-#define THRESHOLD_LANE_RATIO	0.25
+#define THRESHOLD_LANE_RATIO	0.10
 
 TurnAction::TurnAction(double ang) {
   angle = ang;
@@ -93,16 +94,18 @@ int LaneAction::GetType() {
 
 bool LaneAction::Drive(RoboClaw* roboclaw, uint8_t addr, DriveInfo info) {
   if (!turn) {
-	  printf("lane turn\n");
+	  
     startTick = info.tick;
     turn = true;
 
     if (ratio > 0.0) {
+		printf("lane turn right %f\n", ratio);
 #ifndef DRIVER_SIMULATION
       roboclaw->BackwardM2(addr, 0); // Left Off
       roboclaw->ForwardM2(addr, 90); // Right On
 #endif
     } else {
+		printf("lane turn left %f\n", ratio);
 #ifndef DRIVER_SIMULATION
       roboclaw->ForwardM2(addr, 0); // Right On
       roboclaw->BackwardM2(addr, 90); // Left Off
@@ -113,7 +116,7 @@ bool LaneAction::Drive(RoboClaw* roboclaw, uint8_t addr, DriveInfo info) {
   }
 
   int64_t elapsed = info.tick - startTick;
-  if (turn && !recover && elapsed > 5000) {
+  if (turn && !recover && elapsed > 1000) {
 	  printf("lane recover\n");
     recover = true;
     startTick = info.tick;
@@ -244,7 +247,7 @@ void Driver::Back() {
 }
 
 void Driver::Left() {
-	controlM2 -= 40;
+	controlM2 -= 90;
 	printf("Left controlM2: %d\n", controlM2);
 #ifndef DRIVER_SIMULATION
 	if (controlM2 >= 0) {
@@ -259,7 +262,7 @@ void Driver::Left() {
 }
 
 void Driver::Right() {
-	controlM2 += 40;
+	controlM2 += 90;
 	printf("Right controlM2: %d\n", controlM2);
 #ifndef DRIVER_SIMULATION
 	if (controlM2 >= 0) {
