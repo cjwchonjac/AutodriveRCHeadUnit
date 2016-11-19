@@ -1,4 +1,4 @@
-
+// #define TEST_RECORDED_VIDEO
 // #define TEST_CAMERA_ONLY
 // #define TEST_FROM_VIDEO
 
@@ -8,7 +8,7 @@
 #include "ControlServer.h"
 #include "MQ.h"
 
-#define ROBOCLAW_PORT 			"Com3"
+#define ROBOCLAW_PORT 		"Com3"
 #define ROBOCLOW_BAUDRATE 	115200
 
 using namespace std;
@@ -39,9 +39,10 @@ int main() {
 	if (!c->Initialize()) {
 		cout << "Camera not found" << endl;
 		return 0;
+		
 	}
-	/*
-	while (1) {
+	
+	/*while (1) {
 		c->Render();
 		cv::waitKey(30);
 	}*/
@@ -65,10 +66,12 @@ int main() {
 			case CONTROL_REQUEST_START:
 				start = true;
 				driver->Start();
+				c->StartRecording();
 				break;
 			case CONTROL_REQUEST_END:
 				start = false;
 				driver->End();
+				c->StopRecording();
 				break;
 			case CONTROL_REQUEST_SEGMENT_ARRIVED:
 				arrived = reinterpret_cast<SegmentArrived*>(rq.data);
@@ -116,7 +119,11 @@ int main() {
 			info.left = rr.left;
 			info.right = rr.right;
 			info.center = rr.center;
-			info.lane = rr.laneDirection;
+			info.laneX = rr.laneDirectionX;
+			info.laneY = rr.laneDirectionY;
+			info.laneVPE = rr.laneVPE;
+			info.laneLeft = rr.laneValidLeft;
+			info.laneRight = rr.laneValidRight;
 			info.arrived = index;
 			info.angle = angle;
 			info.tick = ElapsedMicroseconds.QuadPart;
@@ -145,7 +152,8 @@ int main() {
 	int main(void) {
 		Camera c;
 		bool init = false;
-		CvCapture* capture = cvCaptureFromFile("output.avi");
+		CvCapture* capture = cvCaptureFromFile("road.mp4");
+		CvVideoWriter* writer = NULL;
 
 		if (capture) {
 			double fps = cvGetCaptureProperty(
@@ -158,14 +166,31 @@ int main() {
 				if (image) {
 					if (!init) {
 						c.InitLaneOnly(image->width, image->height, image->nChannels);
+						writer = cvCreateVideoWriter("test.avi", 
+							CV_FOURCC('D', 'I', 'V', '3'), 
+							fps,
+							CvSize(image->width, image->height), 
+							1);
+						init = true;
 					}
 
-					double value = c.CheckLanes(image);
-					printf("lane value: %f\n", value);
+					double result[2];
+					int flags[3];
+					// c.CheckLanes(image, result, flags);
+					int value = cvWriteFrame(writer, image);
+					printf("value: %d\n", value);
+					cv::waitKey(30);
+					// printf("(%f, %f) %d %d %d\n", result[0], result[1], flags[0], flags[1], flags[2]);
 				}
+				else {
+					break;
+				}
+
+				// cv::waitKey(50);
 			}
 		}
 
+		cvReleaseVideoWriter(&writer);
 		return 0;
 	}
 #endif

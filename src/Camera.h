@@ -41,7 +41,11 @@ struct RenderResult {
 	bool center;
 	bool left;
 	bool right;
-	double laneDirection;
+	double laneDirectionX;
+	double laneDirectionY;
+	int laneVPE;
+	int laneValidLeft;
+	int laneValidRight;
 	double leftObjectVelocity;
 	double rightObjectVelocity;
 };
@@ -75,10 +79,12 @@ public:
 	int lastRightSideLeftmost;
 
 	Status laneR, laneL;
-	int center = -1;
+	int centerX = -1;
+	int centerY = -1;
 
 	CvMemStorage* houghStorage;
-	CvVideoWriter* writer;
+	CvVideoWriter* depthWriter;
+	CvVideoWriter* imageWriter;
 
 	CvSize frameSize;
 	IplImage * tempFrame;
@@ -92,8 +98,11 @@ public:
 	void InitLaneOnly(int width, int height, int channels);
 	RenderResult Render();
 	RenderResult CheckObjects();
-	double CheckLanes(IplImage* image);
+	void CheckLanes(IplImage* image, double* result, int* resultFlags);
 
 	bool processSide(std::vector<Lane> lanes, IplImage *edges, bool right);
-	int processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame);
+	void processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame, int* result, int* resultFlags);
+
+	void StartRecording();
+	void StopRecording();
 };

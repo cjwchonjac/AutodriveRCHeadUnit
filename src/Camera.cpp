@@ -62,8 +62,8 @@ enum{
 	CANNY_MAX_TRESHOLD = 100, // edge detector maximum hysteresis threshold
 
 	HOUGH_TRESHOLD = 50,		// line approval vote threshold
-	HOUGH_MIN_LINE_LENGTH = 50,	// remove lines shorter than this treshold
-	HOUGH_MAX_LINE_GAP = 100,   // join lines to one with smaller than this gaps
+	HOUGH_MIN_LINE_LENGTH = 30,	// remove lines shorter than this treshold
+	HOUGH_MAX_LINE_GAP = 200,   // join lines to one with smaller than this gaps
 
 	CAR_DETECT_LINES = 4,    // minimum lines for a region to pass validation as a 'CAR'
 	CAR_H_LINE_LENGTH = 10,  // minimum horizontal line length from car body in px
@@ -314,7 +314,7 @@ bool Camera::processSide(std::vector<Lane> lanes, IplImage *edges, bool right) {
 
 
 
-int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
+void Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame, int* result, int* resultFlags) {
 	// classify lines to left/right side
 
 	std::vector<Lane> left, right;
@@ -322,8 +322,13 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 	std::vector<std::vector<std::vector<cv::Point>>> clusters;
 	std::vector<int> inliers;
 	std::vector<cv::Mat> vps;
-	double cx = -1.0;
-	bool justCalc = false;
+	bool fromVPE = false;
+
+	result[0] = -1;
+	result[1] = -1;
+	resultFlags[0] = false;
+	resultFlags[1] = false;
+	resultFlags[2] = false;
 
 	for (int i = 0; i < lines->total; i++)
 	{
@@ -334,7 +339,16 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		lineSegments.push_back(seg);
 	}
 
-	msac.multipleVPEstimation(lineSegments, clusters, inliers, vps, 1);
+	msac.multipleVPEstimation(lineSegments, clusters, inliers, vps, 2);
+	for (int idx = 0; idx < vps.size(); idx++) {
+		cv::Mat mat = vps.at(idx);
+		float d1 = mat.at<float>(0, 0);
+		float d2 = mat.at<float>(1, 0);
+		// printf("(%f, %f) ", d1, d2);
+	}
+
+	// printf("\n");
+
 	if (vps.size() > 0) {
 		cv::Mat mat = vps.at(0);
 		float d1 = mat.at<float>(0, 0);
@@ -342,8 +356,10 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		// printf("vps %f, %f\n", d1, d2);
 
 		if (0 < d1 && d1 < imageWidth) {
-			cx = d1;
-			justCalc = true;
+			fromVPE = true;
+			result[0] = d1;
+			result[1] = d2;
+			resultFlags[0] = 1;
 		}
 		
 	}
@@ -402,15 +418,18 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 	CvPoint r2(x2, laneL.k.get() * x2 + laneL.b.get());
 	cvLine(temp_frame, r1, r2, CV_RGB(255, 0, 255), 2);
 
-	if (justCalc) {
-		return cx;
+	resultFlags[1] = (lValid && !laneL.reset)? 1:0;
+	resultFlags[2] = (rValid && !laneR.reset)? 1:0;
+
+	if (fromVPE) {
+		return;
 	}
 
 	if (!laneR.reset && !laneL.reset && lValid && rValid) {
 		// parellel case
 		int det = ((l1.x - l2.x) * (r1.y - r2.y) - (l1.y - l2.y) * (r1.x - r2.x));
 		if (det == 0) {
-			return cx;
+			return;
 		}
 
 		double lx = l2.x - l1.x;
@@ -423,20 +442,19 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		// printf("lSlope : %f, rSlope: %f\n", lSlope, rSlope);
 
 		if (lSlope <= 0) {
-			return cx;
+			return;
 		}
 
 		if (rSlope >= 0) {
-			return cx;
+			return;
 		}
 
 
-		int cx = ((l1.x * l2.y - l1.y * l2.x) * (r1.x - r2.x) - (r1.x * r2.y - r1.y * r2.x) * (l1.x - l2.x)) /
+		result[0] = ((l1.x * l2.y - l1.y * l2.x) * (r1.x - r2.x) - (r1.x * r2.y - r1.y * r2.x) * (l1.x - l2.x)) /
 			det;
-		int cy = ((l1.x * l2.y - l1.y * l2.x) * (r1.y - r2.y) - (r1.x * r2.y - r1.y * r2.x) * (l1.y - l2.y)) /
+		result[1] = ((l1.x * l2.y - l1.y * l2.x) * (r1.y - r2.y) - (r1.x * r2.y - r1.y * r2.x) * (l1.y - l2.y)) /
 			det;
-
-		return cx;
+		return;
 
 	}
 	else if (!laneR.reset && rValid) {
@@ -453,15 +471,16 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		}*/
 
 		if (rx == 0) {
-			return cx;
+			return;
 		}
 
 		if (rSlope >= 0) {
-			return cx;
+			return;
 		}
 
-		double cx = r1.y / ry * rx + r1.x;
-		return cx;
+		result[0] = r1.y / ry * rx + r1.x;
+		result[1] = (result[0] - r1.x) * rSlope + r1.y;
+		return;
 	}
 	else if (!laneL.reset && lValid) {
 		double lx = l2.x - l1.x;
@@ -478,18 +497,17 @@ int Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 		}*/
 
 		if (lx == 0) {
-			return cx;
+			return;
 		}
 
 		if (lSlope >= 0) {
-			return cx;
+			return;
 		}
 
-		double cx = l1.y / ly * lx + l1.x;
-		return cx;
+		result[0] = l1.y / ly * lx + l1.x;
+		result[1] = (result[0] - l1.x) * lSlope + r1.y;
+		return;
 	}
-
-	return cx;
 }
 
 
@@ -524,13 +542,13 @@ RenderResult Camera::CheckObjects() {
 			if (y < DISPLAY_HEIGHT * 1 / 2) {
 				filtered.push_back(cv::Point(x, y));
 
-				if (x > DISPLAY_WIDTH * 4 / 5) {
+				if (x > DISPLAY_WIDTH * 2 / 3) {
 					if (rightSideLeftmost < 0 || x < rightSideLeftmost) {
 						rightSideLeftmost = x;
 						result.right = true;
 					}
 				}
-				else if (x < DISPLAY_WIDTH * 1 / 5) {
+				else if (x < DISPLAY_WIDTH * 1 / 3) {
 					if (leftSideRightmost < 0 || x > leftSideRightmost) {
 						leftSideRightmost = x;
 						result.left = true;
@@ -575,6 +593,8 @@ void RightImageClicked(int event, int x, int y, int flags, void* userdata) {
 }
 
 bool Camera::Initialize() {
+	depthWriter = NULL;
+	imageWriter = NULL;
 	zed = new sl::zed::Camera(static_cast<sl::zed::ZEDResolution_mode> (sl::zed::ZEDResolution_mode::HD720));
 
 	sl::zed::InitParams parameters;
@@ -598,7 +618,8 @@ bool Camera::Initialize() {
 	imageRight = new cv::Mat(imageHeight, imageWidth, CV_8UC4, 1);
 	depth = new cv::Mat(imageHeight, imageWidth, CV_8UC4, 1);
 
-	center = imageWidth / 2;
+	centerX = imageWidth / 2;
+	centerY = 0;
 
 	cv::namedWindow("ImageLeft", cv::WINDOW_AUTOSIZE);
 	cv::namedWindow("ImageRight", cv::WINDOW_AUTOSIZE);
@@ -619,17 +640,13 @@ bool Camera::Initialize() {
 	imageThreasholded = new cv::Mat(*displaySize, CV_8UC4);
 	drawing = new cv::Mat(*displaySize, CV_8UC4);
 
-	writer = cvCreateVideoWriter("output.avi",
-                              CV_FOURCC('D', 'I', 'V', '3'),
-                              15,
-                              CvSize(imageWidth, imageHeight),
-                              1);
-
 	InitLaneOnly(imageWidth, imageHeight, 4);
 	return true;
 }
 
 void Camera::InitLaneOnly(int width, int height, int channels) {
+	depthWriter = NULL;
+	imageWriter = NULL;
 	imageWidth = width;
 	imageHeight = height;
 
@@ -643,7 +660,7 @@ void Camera::InitLaneOnly(int width, int height, int channels) {
 	msac.init(MODE_LS, frameSize);
 }
 
-double Camera::CheckLanes(IplImage* frame) {
+void Camera::CheckLanes(IplImage* frame, double* ret, int* resultFlags) {
 	cvPyrDown(frame, halfFrame, CV_GAUSSIAN_5x5); // Reduce the image by 2
 	//cvCvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
 	// we're interested only in road below horizont - so crop top image portion off
@@ -661,16 +678,22 @@ double Camera::CheckLanes(IplImage* frame) {
 	double theta = CV_PI / 180;
 	CvSeq* lines = cvHoughLines2(edges, houghStorage, CV_HOUGH_PROBABILISTIC,
 		rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
-
-	int cx = processLanes(lines, edges, tempFrame);
-	if (cx < 0) {
-		cx = frameSize.width / 2;
+	 
+	int result[2];
+	processLanes(lines, edges, tempFrame, result, resultFlags);
+	if (result[0] <= 0 || result[0] >= frameSize.width) {
+		result[0] = frameSize.width / 2;
 	}
 
-	center = center - (LPF_Beta * (center - cx));
-	cvDrawCircle(tempFrame, CvPoint(center, frameSize.height / 2), 5, CV_RGB(255, 0, 255), 3);
+	if (result[1] <= 0 || result[1] > frameSize.height) {
+		result[1] = 20;
+	}
 
-	double ratio = ((double) center - (frameSize.width / 2)) / (frameSize.width / 2);
+	centerX = centerX - (LPF_Beta * (centerX - result[0]));
+	cvDrawCircle(tempFrame, CvPoint(centerX, centerY), 5, CV_RGB(255, 0, 255), 3);
+
+	double ratioX = ((double)centerX - (frameSize.width / 2)) / (frameSize.width / 2);
+	double ratioY = ((double)centerY - (frameSize.height / 2)) / (frameSize.height / 2);
 
 	// process vehicles
 
@@ -685,7 +708,29 @@ double Camera::CheckLanes(IplImage* frame) {
 	cvShowImage("Grey", grey);
 	cvShowImage("Edges", edges);
 	cvShowImage("Color", tempFrame);
-	return ratio;
+
+	ret[0] = ratioX;
+	ret[1] = ratioY;
+
+}
+
+void Camera::StartRecording() {
+	StopRecording();
+	
+
+}
+
+void Camera::StopRecording() {
+	if (depthWriter != NULL) {
+		cvReleaseVideoWriter(&depthWriter);
+	}
+	
+	if (imageWriter != NULL) {
+		cvReleaseVideoWriter(&imageWriter);
+	}
+	
+	depthWriter = NULL;
+	imageWriter = NULL;
 }
 
 RenderResult Camera::Render() {
@@ -705,10 +750,44 @@ RenderResult Camera::Render() {
 		memcpy((*imageRight).data, right.data, width*height * 4 * sizeof(uchar));
 
 
+		cv::Mat recDepth(imageHeight, imageWidth, CV_8UC3);
+		cv::Mat recImage(imageHeight, imageWidth, CV_8UC3);
+
 		// Retrieve depth map
 		sl::zed::Mat depthmap = zed->normalizeMeasure(sl::zed::MEASURE::DEPTH);
 		memcpy((*depth).data, depthmap.data, width*height * 4 * sizeof(uchar));
 		// cv::inRange(*depth, cv::Scalar(192, 192, 192, 255), cv::Scalar(255, 255, 255, 255), imageThreasholded);
+
+		cv::cvtColor(*imageRight, recImage, CV_BGRA2BGR);
+		cv::cvtColor(*depth, recDepth, CV_BGRA2BGR);
+		{
+
+			IplImage image(recDepth);
+			if (depthWriter == NULL) {
+				depthWriter = cvCreateVideoWriter("depth.avi",
+					CV_FOURCC('D', 'I', 'V', '3'),
+					15,
+					cv::Size(image.width, image.height),
+					1);
+			}
+
+			int value = cvWriteFrame(depthWriter, &image);
+			// printf("value: %d, ", value);
+		}
+
+		{
+			IplImage image(recImage);
+			if (imageWriter == NULL) {
+				imageWriter = cvCreateVideoWriter("image.avi",
+					CV_FOURCC('D', 'I', 'V', '3'),
+					15,
+					cv::Size(image.width, image.height),
+					1);
+			}
+			
+			int value = cvWriteFrame(imageWriter, &image);
+			// printf("%d\n", value);
+		}
 
 		// Display left image in OpenCV window
 		// cv::resize(imageThreasholded, imageLeftDisplay, displaySize);
@@ -717,7 +796,8 @@ RenderResult Camera::Render() {
 		cv::resize(*depth, *imageRightDisplay, *displaySize);
 		cv::resize(*depth, *depthDisplay, *displaySize);
 
-		(*contours).clear();
+		(*contours).clear();\
+
 		(*hierachy).clear();
 
 		cv::Mat gray, canny;
@@ -738,9 +818,16 @@ RenderResult Camera::Render() {
 		RenderResult rr = CheckObjects();
 
 		IplImage frame(*imageRight);
-		cvWriteFrame(writer, &frame);
+		double result[2];
+		int flags[3];
+		
 		rr = CheckObjects();
-		rr.laneDirection = CheckLanes(&frame);
+		CheckLanes(&frame, result, flags);
+		rr.laneDirectionX = result[0];
+		rr.laneDirectionY = result[1];
+		rr.laneVPE = flags[0];
+		rr.laneValidLeft = flags[1];
+		rr.laneValidRight = flags[2];
 		return rr;
 		// cv::imshow("ImageRight", depthDisplay);
 	}
