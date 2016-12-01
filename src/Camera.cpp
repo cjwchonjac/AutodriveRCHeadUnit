@@ -513,7 +513,7 @@ void Camera::processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame, i
 
 RenderResult Camera::CheckObjects() {
 	cv::Mat* image = imageLeftDisplay;
-	cv::imshow("ImageRight", *drawing);
+	// cv::imshow("ImageRight", *drawing);
 
 	std::vector<std::vector<cv::Point>> newContours;
 	RenderResult result = { 0 };
@@ -592,6 +592,39 @@ void RightImageClicked(int event, int x, int y, int flags, void* userdata) {
 	//printf("RightImage event %d, %d depth : %d\n", y, x, depth);
 }
 
+void Camera::InitWithVideo(int width, int height) {
+	depthWriter = NULL;
+	imageWriter = NULL;
+
+	imageWidth = width;
+	imageHeight = height;
+
+	imageLeft = new cv::Mat(imageHeight, imageWidth, CV_8UC3, 1);
+	imageRight = new cv::Mat(imageHeight, imageWidth, CV_8UC3, 1);
+	depth = new cv::Mat(imageHeight, imageWidth, CV_8UC3, 1);
+
+	centerX = imageWidth / 2;
+	centerY = 0;
+
+	// cv::namedWindow("ImageLeft", cv::WINDOW_AUTOSIZE);
+	// cv::namedWindow("ImageRight", cv::WINDOW_AUTOSIZE);
+	cv::namedWindow("Depth", cv::WINDOW_AUTOSIZE);
+
+	rng = new cv::RNG(12345);
+
+	contours = new std::vector<std::vector<cv::Point>>();
+	hierachy = new std::vector<cv::Vec4i>();
+
+	displaySize = new cv::Size(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+	imageLeftDisplay = new cv::Mat(*displaySize, CV_8UC3);
+	imageRightDisplay = new cv::Mat(*displaySize, CV_8UC3);
+	depthDisplay = new cv::Mat(*displaySize, CV_8UC3);
+	imageThreasholded = new cv::Mat(*displaySize, CV_8UC3);
+	drawing = new cv::Mat(*displaySize, CV_8UC3);
+
+	InitLaneOnly(imageWidth, imageHeight, 3);
+}
+
 bool Camera::Initialize() {
 	depthWriter = NULL;
 	imageWriter = NULL;
@@ -622,7 +655,7 @@ bool Camera::Initialize() {
 	centerY = 0;
 
 	cv::namedWindow("ImageLeft", cv::WINDOW_AUTOSIZE);
-	cv::namedWindow("ImageRight", cv::WINDOW_AUTOSIZE);
+	// cv::namedWindow("ImageRight", cv::WINDOW_AUTOSIZE);
 	cv::namedWindow("Depth", cv::WINDOW_AUTOSIZE);
 
 	cv::setMouseCallback("ImageLeft", LeftImageClicked, this);
@@ -705,8 +738,8 @@ void Camera::CheckLanes(IplImage* frame, double* ret, int* resultFlags) {
 	cvLine(tempFrame, cvPoint(frameSize.width / 2, 0),
 		cvPoint(frameSize.width / 2, frameSize.height), CV_RGB(255, 255, 0), 1);
 
-	cvShowImage("Grey", grey);
-	cvShowImage("Edges", edges);
+	// cvShowImage("Grey", grey);
+	// cvShowImage("Edges", edges);
 	cvShowImage("Color", tempFrame);
 
 	ret[0] = ratioX;
@@ -796,7 +829,7 @@ RenderResult Camera::Render() {
 		cv::resize(*depth, *imageRightDisplay, *displaySize);
 		cv::resize(*depth, *depthDisplay, *displaySize);
 
-		(*contours).clear();\
+		(*contours).clear();
 
 		(*hierachy).clear();
 
@@ -814,7 +847,7 @@ RenderResult Camera::Render() {
 
 		}
 
-		cv::imshow("ImageLeft", *drawing);
+		// cv::imshow("ImageLeft", *drawing);
 		RenderResult rr = CheckObjects();
 
 		IplImage frame(*imageRight);
@@ -834,4 +867,58 @@ RenderResult Camera::Render() {
 
 	RenderResult reuslt = { 0 };
 	return reuslt;
+}
+
+RenderResult Camera::RenderWithVideo(cv::VideoCapture* imageCapture, cv::VideoCapture* depthCapture, bool* ret) {
+	int width = imageWidth;
+	int height = imageHeight;
+
+	bool cResult = imageCapture->read(*imageRight);
+	cResult = cResult && depthCapture->read(*depth);
+
+	*ret = cResult;
+	if (!cResult) {
+		return RenderResult();
+	}
+
+	cv::resize(*imageRight, *imageLeftDisplay, *displaySize);
+	cv::resize(*depth, *imageRightDisplay, *displaySize);
+	cv::resize(*depth, *depthDisplay, *displaySize);
+
+	// cv::imshow("ImageLeft", *imageLeftDisplay);
+	// cv::imshow("ImageRight", *imageRightDisplay);
+
+	(*contours).clear();
+	(*hierachy).clear();
+
+	cv::Mat gray, canny;
+	cv::cvtColor(*imageRightDisplay, gray, CV_BGR2GRAY);
+	cv::blur(gray, gray, cv::Size(3, 3));
+	cv::Canny(gray, canny, 160, 200, 3);
+	cv::findContours(gray, *contours, *hierachy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
+
+	(*drawing).setTo(cv::Scalar(0, 0, 0));
+
+	for (int i = 0; i < (*contours).size(); i++) {
+		cv::Scalar color = cv::Scalar((*rng).uniform(0, 255), (*rng).uniform(0, 255), (*rng).uniform(0, 255));
+		cv::drawContours(*drawing, *contours, i, color, 2, 8, *hierachy, 0, cv::Point());
+
+	}
+
+	// cv::imshow("Drawing", *drawing);
+	
+	RenderResult rr = CheckObjects();
+
+	IplImage frame(*imageRight);
+	double result[2];
+	int flags[3];
+
+	rr = CheckObjects();
+	CheckLanes(&frame, result, flags);
+	rr.laneDirectionX = result[0];
+	rr.laneDirectionY = result[1];
+	rr.laneVPE = flags[0];
+	rr.laneValidLeft = flags[1];
+	rr.laneValidRight = flags[2];
+	return rr;
 }

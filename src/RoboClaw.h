@@ -8,7 +8,13 @@
 	#include <SoftwareSerial.h>
 #endif
 
+#define ROBOCLAW_SIMULATION
+
+#ifndef ROBOCLAW_SIMULATION
 #include <serial/serial.h>
+#else
+#include <string>
+#endif
 
 /******************************************************************************
 * Definitions
@@ -25,8 +31,9 @@ class RoboClaw
 {
 	uint16_t crc;
 	uint32_t timeout;
-	
+#ifndef ROBOCLAW_SIMULATION
 	serial::Serial *hserial;
+#endif
 #ifdef __AVR__
 	SoftwareSerial *sserial;
 #endif

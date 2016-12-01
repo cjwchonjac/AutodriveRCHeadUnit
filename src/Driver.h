@@ -86,6 +86,7 @@ private:
   int seg;
   double angle;
   int64_t arrivedTick;
+  double lastLaneX;
 
 public:
 	int currentSpeed;

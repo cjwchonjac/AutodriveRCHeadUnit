@@ -95,8 +95,10 @@ public:
 	MSAC msac;
 
 	bool Initialize();
+	void InitWithVideo(int width, int height);
 	void InitLaneOnly(int width, int height, int channels);
 	RenderResult Render();
+	RenderResult RenderWithVideo(cv::VideoCapture* image, cv::VideoCapture* depth, bool* result);
 	RenderResult CheckObjects();
 	void CheckLanes(IplImage* image, double* result, int* resultFlags);
 

@@ -1,11 +1,11 @@
-// #define TEST_RECORDED_VIDEO
+#define TEST_RECORDED_VIDEO
 // #define TEST_CAMERA_ONLY
 // #define TEST_FROM_VIDEO
+#include "Driver.h"
 
 #ifndef TEST_RECORDED_VIDEO
-#include "Driver.h"
-#include "Camera.h"
 #include "ControlServer.h"
+#include "Camera.h"
 #include "MQ.h"
 
 #define ROBOCLAW_PORT 		"Com3"
@@ -150,47 +150,64 @@ int main() {
 	#include "Camera.h"
 
 	int main(void) {
+		LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
+		LARGE_INTEGER Frequency;
+
 		Camera c;
 		bool init = false;
-		CvCapture* capture = cvCaptureFromFile("road.mp4");
-		CvVideoWriter* writer = NULL;
+		bool start = true;
 
-		if (capture) {
-			double fps = cvGetCaptureProperty(
-			            capture,
-			            CV_CAP_PROP_FPS
-			            );
-			while (1) {
-				IplImage* image = cvQueryFrame(capture);
+		cv::VideoCapture capture("image.avi");
+		cv::VideoCapture depthCapture("depth.avi");
 
-				if (image) {
-					if (!init) {
-						c.InitLaneOnly(image->width, image->height, image->nChannels);
-						writer = cvCreateVideoWriter("test.avi", 
-							CV_FOURCC('D', 'I', 'V', '3'), 
-							fps,
-							CvSize(image->width, image->height), 
-							1);
-						init = true;
-					}
+		Driver d(NULL, 0x80);
 
-					double result[2];
-					int flags[3];
-					// c.CheckLanes(image, result, flags);
-					int value = cvWriteFrame(writer, image);
-					printf("value: %d\n", value);
-					cv::waitKey(30);
-					// printf("(%f, %f) %d %d %d\n", result[0], result[1], flags[0], flags[1], flags[2]);
-				}
-				else {
-					break;
+		QueryPerformanceFrequency(&Frequency);
+		QueryPerformanceCounter(&StartingTime);
+
+		if (capture.isOpened() && depthCapture.isOpened()) {
+			
+			double fps = capture.get(cv::CAP_PROP_FPS);
+			bool result = true;
+			while (result) {
+
+				if (!init) {
+					c.InitWithVideo(capture.get(cv::CAP_PROP_FRAME_WIDTH), capture.get(cv::CAP_PROP_FRAME_HEIGHT));
+					init = true;
 				}
 
-				// cv::waitKey(50);
+				if (start) {
+					RenderResult rr = c.RenderWithVideo(&capture, &depthCapture, &result);
+
+					int index = -1;
+					double angle = 0.0;
+
+					QueryPerformanceCounter(&EndingTime);
+					ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+					ElapsedMicroseconds.QuadPart *= 1000;
+					ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
+
+					DriveInfo info;
+					info.left = rr.left;
+					info.right = rr.right;
+					info.center = rr.center;
+					info.laneX = rr.laneDirectionX;
+					info.laneY = rr.laneDirectionY;                 
+					info.laneVPE = rr.laneVPE;
+					info.laneLeft = rr.laneValidLeft;
+					info.laneRight = rr.laneValidRight;
+					info.arrived = index;
+					info.angle = angle;
+					info.tick = ElapsedMicroseconds.QuadPart;
+
+					d.Drive(info);
+
+				}
+
+				cv::waitKey(30);
 			}
 		}
 
-		cvReleaseVideoWriter(&writer);
 		return 0;
 	}
 #endif

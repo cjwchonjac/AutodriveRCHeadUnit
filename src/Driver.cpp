@@ -8,7 +8,7 @@
 #define TURN_VALUE	110
 
 // 
-// #define DRIVER_SIMULATION
+#define DRIVER_SIMULATION
 
 #define THRESHOLD_TURN_ANGLE	15.0
 #define THRESHOLD_LANE_RATIO	0.1
@@ -72,7 +72,7 @@ bool AvoidAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveI
 
 		int64_t elapsed = info.tick - startTick;
 		if (turn && !recover && elapsed > 750) {
-			printf("object recover\n");
+			// printf("object recover\n");
 			recover = true;
 			startTick = info.tick;
 
@@ -94,7 +94,7 @@ bool AvoidAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveI
 
 		if (turn && recover && elapsed > 400) {
 			// roboclaw->ForwardM1(addr, 80);
-			printf("object finishing\n");
+			// printf("object finishing\n");
 #ifndef DRIVER_SIMULATION
 			roboclaw->ForwardM2(addr, 0);
 			roboclaw->BackwardM2(addr, 0);
@@ -151,7 +151,7 @@ bool TurnAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveIn
 
   int64_t elapsed = info.tick - startTick;
   if (turn && !recover && elapsed > 500 + abs(angle) * 500 / 20) {
-	  printf("turn recover\n");
+	  // printf("turn recover\n");
     recover = true;
     startTick = info.tick;
 
@@ -172,7 +172,7 @@ bool TurnAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveIn
   }
 
   if (turn && recover && elapsed > 400) {
-	  printf("turn finishing\n");
+	  // printf("turn finishing\n");
 #ifndef DRIVER_SIMULATION
     roboclaw->ForwardM2(addr, 0);
     roboclaw->BackwardM2(addr, 0);
@@ -218,7 +218,7 @@ bool LaneAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveIn
 
   int64_t elapsed = info.tick - startTick;
   if (turn && !recover && elapsed > 500) {
-	  printf("lane recover\n");
+	  // printf("lane recover\n");
     recover = true;
     startTick = info.tick;
 
@@ -239,7 +239,7 @@ bool LaneAction::Drive(Driver* driver, RoboClaw* roboclaw, uint8_t addr, DriveIn
 
   if (turn && recover && elapsed > 400) {
 	  // roboclaw->ForwardM1(addr, 80);
-	  printf("lane finishing\n");
+	  // printf("lane finishing\n");
 #ifndef DRIVER_SIMULATION
     roboclaw->ForwardM2(addr, 0);
     roboclaw->BackwardM2(addr, 0);
@@ -260,6 +260,7 @@ Driver::Driver(RoboClaw* r, uint8_t address) {
 
   angle = 0.0;
   seg = -1;
+  lastLaneX = 0;
 }
 
 Driver::~Driver() {
@@ -277,9 +278,11 @@ void Driver::Start() {
 }
 
 void Driver::Drive(DriveInfo info) {
-	 printf("-- DriveInfo X: %.4f, Y: %.4f, %d %d %d laneVPE: %d, LeftLane: %d, RightLane: %d --\n",
-		info.laneX, info.laneY, info.center, info.left, info.right, info.laneVPE, info.laneLeft, info.laneRight);
+	double laneDelta = info.laneX - lastLaneX;
+	// printf("-- DriveInfo X: %.4f, Y: %.4f, %d %d %d laneVPE: %d, LeftLane: %d, RightLane: %d, %.4f --\n",
+	// info.laneX, info.laneY, info.center, info.left, info.right, info.laneVPE, info.laneLeft, info.laneRight, laneDelta);
 
+	
 	 if (info.arrived >= 0) {
 		 seg = info.arrived;
 		 angle = info.angle;
@@ -303,6 +306,21 @@ void Driver::Drive(DriveInfo info) {
 		actions.push((DriveAction*) new LaneAction(info.laneX));
     }
   }
+
+  if (laneDelta > 0.05 || laneDelta < -0.01) {
+	  bool insert = true;
+	  if (!actions.empty()) {
+		  DriveAction* action = actions.top();
+		  int lane = action->GetType();
+		  insert = action->GetType() != DRIVE_ACTION_TYPE_LANE && action->GetType() != DRIVE_ACTION_TYPE_TURN && action->GetType() != DRIVE_ACTION_TYPE_AVOID;
+	  }
+
+	  if (insert) {
+		  actions.push((DriveAction*) new LaneAction(laneDelta));
+	  }
+  }
+
+  lastLaneX = info.laneX;
 
   if (seg >= 0 && abs(angle) > THRESHOLD_TURN_ANGLE) {
 	  printf("new turn %f\n", info.angle);

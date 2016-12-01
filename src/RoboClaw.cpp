@@ -34,6 +34,7 @@ RoboClaw::~RoboClaw()
 
 bool RoboClaw::begin(const std::string& port, long speed)
 {
+#ifndef ROBOCLAW_SIMULATION
 	try {
 		hserial = new serial::Serial(port, speed, serial::Timeout(/*interbyte*/ 10, /*read*/ 100, /*read mul*/ 0, /*write*/ 100, /*write mul*/ 0));
 		return true;
@@ -41,6 +42,9 @@ bool RoboClaw::begin(const std::string& port, long speed)
 	catch (serial::IOException& e) {
 		return false;
 	}
+#else
+	return true;
+#endif
 #ifdef __AVR__
 	else{
 		sserial->begin(speed);
@@ -49,15 +53,21 @@ bool RoboClaw::begin(const std::string& port, long speed)
 }
 
 bool RoboClaw::isOpened() {
+#ifndef ROBOCLAW_SIMULATION
 	return hserial != NULL;
+#else
+	return true;
+#endif
 }
 
 void RoboClaw::end() {
+#ifndef ROBOCLAW_SIMULATION
 	if (hserial) {
 		hserial->close();
 		delete(hserial);
 		hserial = NULL;
 	}
+#endif
 }
 
 bool RoboClaw::listen()
@@ -100,8 +110,12 @@ bool RoboClaw::overflow()
 
 size_t RoboClaw::write(uint8_t byte)
 {	
+#ifndef ROBOCLAW_SIMULATION
 	if(hserial)
 		return hserial->write(&byte, sizeof(byte));
+#else
+	return 1;
+#endif
 #ifdef __AVR__
 	else
 		return sserial->write(byte);
@@ -110,10 +124,14 @@ size_t RoboClaw::write(uint8_t byte)
 
 int RoboClaw::read()
 {
+#ifndef ROBOCLAW_SIMULATION
 	uint8_t data;
 	if (hserial)
 		hserial->read(&data, sizeof(uint8_t));
 		return data;
+#else
+	return 0;
+#endif
 #ifdef __AVR__
 	else
 		return sserial->read();
@@ -122,8 +140,12 @@ int RoboClaw::read()
 
 int RoboClaw::available()
 {
+#ifndef ROBOCLAW_SIMULATION
 	if(hserial)
 		return hserial->available();
+#else
+	return 0;
+#endif
 #ifdef __AVR__
 	else
 		return sserial->available();
@@ -132,16 +154,22 @@ int RoboClaw::available()
 
 void RoboClaw::flush()
 {
+#ifndef ROBOCLAW_SIMULATION
 	if(hserial)
 		hserial->flush();
+#endif
 }
 
 int RoboClaw::read(uint32_t timeout)
 {
+#ifndef ROBOCLAW_SIMULATION
 	uint8_t data;
 	if (hserial)
 		hserial->read(&data, sizeof(uint8_t));
 	return data;
+#else
+	return 0;
+#endif
 	/*if(hserial){
 		uint32_t start = micros();
 		// Empty buffer?
@@ -168,10 +196,12 @@ int RoboClaw::read(uint32_t timeout)
 
 void RoboClaw::clear()
 {
+#ifndef ROBOCLAW_SIMULATION
 	if(hserial){
 		while(hserial->available())
 			hserial->read();
 	}
+#endif
 #ifdef __AVR__
 	else{
 		while(sserial->available())
